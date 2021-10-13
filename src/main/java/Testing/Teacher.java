@@ -16,9 +16,10 @@ public class Teacher extends Person
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
     /** Salary. */
+    @Getter
     @Setter
     @FieldAnnotation
-    protected int _salary;
+    protected int salary;
 
     /** Hire date. */
     @Getter
@@ -27,15 +28,9 @@ public class Teacher extends Person
     protected Calendar _hireDate;
 
     /** Classes. */
-    @Getter
-    @Setter
-    @ForeignKeyAnnotation(columnName = "KTEACHER", columnType = SClass.class)
     protected ArrayList<SClass> _classes;
 
     /** Courses. */
-    @Getter
-    @Setter
-    @ForeignKeyAnnotation(columnName = "KTEACHER", columnType = Course.class)
     protected ArrayList<Course> _courses;
 
 }

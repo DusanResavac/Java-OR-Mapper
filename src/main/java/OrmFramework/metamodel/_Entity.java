@@ -15,7 +15,7 @@ public class _Entity {
     private String _tableName;
     private _Field[] _fields;
 
-    public _Entity(Class t) throws NoSuchMethodException {
+    public _Entity(Class t) {
         EntityAnnotation entityAttribute = (EntityAnnotation) t.getAnnotation(EntityAnnotation.class);
 
         if (entityAttribute == null || isNullOrWhiteSpace(entityAttribute.tableName())) {
@@ -27,13 +27,23 @@ public class _Entity {
         _member = t;
         List<_Field> fields = new ArrayList<_Field>();
 
-        // All fields (including private ones)
-        for (Field reflectField: t.getDeclaredFields()) {
-            if (reflectField.getAnnotation(IgnoreAnnotation.class) != null || Modifier.isStatic(reflectField.getModifiers())) {
+        // get all Fields (including private and inherited ones)
+        List<Field> fieldList = getAllFields(t);
+
+        for (Field reflectField: fieldList) {
+            if (reflectField.getAnnotation(IgnoreAnnotation.class) != null ||
+                    Modifier.isStatic(reflectField.getModifiers()) ||
+                    Modifier.isTransient(reflectField.getModifiers())) {
                 continue;
             }
 
-            _Field field = getField(reflectField, t);
+            _Field field = null;
+            try {
+                field = getField(reflectField, t);
+            } catch (NoSuchMethodException e) {
+                System.out.println(e.getMessage());
+                continue;
+            }
             if (field.getColumnName() == null || field.getColumnName().isBlank()) {
                 field.setColumnName(reflectField.getName().toUpperCase());
             }
@@ -45,6 +55,21 @@ public class _Entity {
         }
 
         _fields = fields.toArray(new _Field[0]);
+    }
+
+
+    public List<Field> getAllFields(Class c) {
+        if (c == null) {
+            return null;
+        }
+
+        ArrayList<Field> fields = new ArrayList<>(Arrays.asList(c.getDeclaredFields()));
+        var returnedFields = getAllFields(c.getSuperclass());
+        if (returnedFields != null) {
+            fields.addAll(returnedFields);
+        }
+
+        return fields;
     }
 
     private _Field getField(Field reflectField, Class t) throws NoSuchMethodException {
@@ -145,5 +170,22 @@ public class _Entity {
 
     public _Field[] getFields() {
         return _fields;
+    }
+
+    /** Gets the entity SQL.
+     * @param prefix Prefix.
+     * @return SQL string. */
+    public String getSQL(String prefix)
+    {
+        if(prefix == null) { prefix = ""; }
+        String rval = "SELECT ";
+        for(int i = 0; i < _fields.length; i++)
+        {
+            if(i > 0) { rval += ", "; }
+            rval += prefix.trim() + _fields[i].getColumnName();
+        }
+        rval += (" FROM " + _tableName);
+
+        return rval;
     }
 }

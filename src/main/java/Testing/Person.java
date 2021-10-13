@@ -32,7 +32,7 @@ public class Person {
     @Getter
     @Setter
     @PrimaryKeyAnnotation
-    protected String _id;
+    protected String id;
 
     /**
      * Name.
@@ -40,7 +40,7 @@ public class Person {
     @FieldAnnotation
     @Getter
     @Setter
-    protected String _name;
+    protected String name;
 
     /**
      * First name.
@@ -48,7 +48,7 @@ public class Person {
     @FieldAnnotation
     @Getter
     @Setter
-    protected String _firstName;
+    protected String firstName;
 
     /**
      * Birth date.
@@ -56,15 +56,15 @@ public class Person {
     @FieldAnnotation(columnName = "BDATE")
     @Getter
     @Setter
-    protected Calendar _birthDate;
+    protected Calendar birthDate;
 
     /**
      * Gender.
      */
-    @FieldAnnotation
+    @FieldAnnotation(columnType = int.class)
     @Getter
     @Setter
-    protected Gender _gender;
+    protected Gender gender;
 
     /**
      * Instance number.
