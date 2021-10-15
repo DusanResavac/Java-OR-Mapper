@@ -1,10 +1,19 @@
 package OrmFramework.metamodel;
 
-import OrmFramework.Orm;
-
+import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
+import java.lang.reflect.ParameterizedType;
+import java.lang.reflect.Type;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
+import java.util.Collection;
+import java.util.Collections;
+import java.util.List;
+
+import static OrmFramework.metamodel.Orm.getConnection;
 
 public class _Field {
     private _Entity entity;
@@ -12,12 +21,16 @@ public class _Field {
     private Method _set;
     private String _name;
     private Class _fieldType;
+    private Class _genericFieldAttribute;
 
     private Class _columnType;
     private String _columnName;
     private boolean _isPk = false;
     private boolean _isFk = false;
     private boolean _isNullable = true;
+    // for foreign keys on the n side
+    private boolean _isExternal = false;
+
 
     public _Field(_Entity entity, String name) {
         this.entity = entity;
@@ -30,30 +43,35 @@ public class _Field {
 
     /**
      * Returns an object that fits the field type / class by converting or casting the parameter based on its class
-     * @param obj
+     * @param value
      * @return
      */
-    public Object toFieldType (Object obj) {
+    public Object toFieldType (Object value, Collection<Object> localCache) throws Exception {
+
+        if (_isFk) {
+            return Orm._createObject(_fieldType, value, localCache);
+        }
+
         // Problem with primitive data types - might not to be changed
         if (_fieldType.equals(boolean.class) || _fieldType.equals(Boolean.class)) {
-            if (obj.getClass().equals(int.class) || obj.getClass().equals(Integer.class)) {
-                return ((int) obj) != 0;
+            if (value.getClass().equals(int.class) || value.getClass().equals(Integer.class)) {
+                return ((int) value) != 0;
             }
-            if (obj.getClass().equals(short.class) || obj.getClass().equals(Short.class)) {
-                return ((short) obj) != 0;
+            if (value.getClass().equals(short.class) || value.getClass().equals(Short.class)) {
+                return ((short) value) != 0;
             }
-            if (obj.getClass().equals(long.class) || obj.getClass().equals(Long.class)) {
-                return ((short) obj) != 0;
+            if (value.getClass().equals(long.class) || value.getClass().equals(Long.class)) {
+                return ((short) value) != 0;
             }
         }
 
-        if (_fieldType.equals(short.class)) { return (short) obj; }
-        if (_fieldType.equals(int.class))   { return (int)   obj; }
-        if (_fieldType.equals(long.class))  { return (long)  obj; }
+        if (_fieldType.equals(short.class)) { return (short) value; }
+        if (_fieldType.equals(int.class))   { return (int)   value; }
+        if (_fieldType.equals(long.class))  { return (long)  value; }
 
         if (_fieldType.isEnum()) {
-            if(obj instanceof String) { return Enum.valueOf(_fieldType, (String) obj); }
-            return _fieldType.getEnumConstants()[(int) obj];
+            if(value instanceof String) { return Enum.valueOf(_fieldType, (String) value); }
+            return value == null ? null : _fieldType.getEnumConstants()[(int) value];
         }
 
         if (_fieldType.equals(Calendar.class)) {
@@ -61,7 +79,7 @@ public class _Field {
             SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             try
             {
-                rval.setTime(f.parse(obj.toString()));
+                rval.setTime(f.parse(value.toString()));
                 return rval;
             }
             catch (Exception ex) {
@@ -69,7 +87,7 @@ public class _Field {
             }
         }
 
-        return obj;
+        return value;
     }
 
     /**
@@ -88,6 +106,8 @@ public class _Field {
             SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             return f.format(((Calendar) obj).getTime());
         }
+
+        if (obj == null) { return null; }
 
         if (obj.getClass().isEnum()) {
             if (_columnType.equals(int.class) || _columnType.equals(Integer.class)) {
@@ -137,6 +157,59 @@ public class _Field {
 
         _set.invoke(obj, value);
     }
+
+    /**
+     * Fills list of the 1 element in an 1:n relation
+     * @param list list to be filled with the n elements.
+     * @param obj the 1 object.
+     * @param c the class of the n elements.
+     * @param localCache caching to prevent accidental recursions.
+     * @return list with the n elements.
+     * @throws NoSuchMethodException
+     * @throws SQLException
+     */
+    public List fill (List list, Object obj, Class c, Collection<Object> localCache) throws NoSuchMethodException, SQLException {
+        String select = Orm._getEntity(c).getSQL(null) + " WHERE " + _columnName + " = ?";
+        PreparedStatement prepStmt = getConnection().prepareStatement(select);
+        prepStmt.setObject(1, entity.getPrimaryKey().getValue(obj));
+
+        ResultSet resultSet = prepStmt.executeQuery();
+
+        // loop through all n elements.
+        while (resultSet.next()) {
+            try {
+                // Create n element or retrieve from cache
+                Object oneOfNObjects = Orm._createObject(c, resultSet, localCache);
+                // add n element
+                list.getClass().getMethod("add", Object.class).invoke(list, oneOfNObjects);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        return list;
+    }
+
+    public Object fill (Object obj, Class c, Collection<Object> localCache) throws NoSuchMethodException, SQLException {
+        String select = Orm._getEntity(c).getSQL(null) + " WHERE " + _columnName + " = ?";
+        PreparedStatement prepStmt = getConnection().prepareStatement(select);
+        prepStmt.setObject(1, entity.getPrimaryKey().getValue(obj));
+
+        ResultSet resultSet = prepStmt.executeQuery();
+
+        // expect only one other element
+        if (resultSet.next()) {
+            try {
+                // Create 1 element or retrieve from cache
+                return Orm._createObject(c, resultSet, localCache);
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
+
+        return null;
+    }
+
 
     public _Entity getEntity() {
         return entity;
@@ -216,5 +289,21 @@ public class _Field {
 
     public void setNullable(boolean _isNullable) {
         this._isNullable = _isNullable;
+    }
+
+    public Class getGenericFieldAttribute() {
+        return _genericFieldAttribute;
+    }
+
+    public void setGenericFieldAttribute(Class _genericFieldAttribute) {
+        this._genericFieldAttribute = _genericFieldAttribute;
+    }
+
+    public boolean isExternal() {
+        return _isExternal;
+    }
+
+    public void setExternal(boolean _isExternal) {
+        this._isExternal = _isExternal;
     }
 }

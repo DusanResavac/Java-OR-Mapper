@@ -3,6 +3,19 @@ create database school;
 
 use school;
 
+create table MAUSRAEDER
+(
+    id   varchar(24) primary key,
+    material varchar(30)
+);
+
+create table MAEUSE
+(
+    id      integer primary key,
+    mausrad varchar(24),
+    material varchar(30),
+    foreign key (mausrad) references MAUSRAEDER (id)
+);
 
 CREATE TABLE TEACHERS
 (

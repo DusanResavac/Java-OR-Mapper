@@ -1,9 +1,6 @@
 package Testing;
 
-import OrmFramework.EntityAnnotation;
-import OrmFramework.FieldAnnotation;
-import OrmFramework.ForeignKeyAnnotation;
-import OrmFramework.PrimaryKeyAnnotation;
+import OrmFramework.*;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -21,17 +18,17 @@ public class SClass
     @Getter
     @Setter
     @PrimaryKeyAnnotation
-    protected String _id;
+    protected String id;
 
     /** Name. */
     @Getter
     @Setter
     @FieldAnnotation
-    protected String _name;
+    protected String name;
 
     /** Teacher. */
     @Getter
     @Setter
-    @ForeignKeyAnnotation(columnName = "KTEACHER")
-    protected Teacher _teacher;
+    @ManyToOne(columnName = "KTEACHER")
+    protected Teacher teacher;
 }

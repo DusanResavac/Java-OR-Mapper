@@ -1,19 +1,29 @@
 package OrmFramework.metamodel;
 
 import OrmFramework.*;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class _Entity {
     private _Field _primaryKey;
     private Class _member;
     private String _tableName;
     private _Field[] _fields;
+    @Getter
+    @Setter
+    private _Field[] _internals;
+    @Getter
+    @Setter
+    private _Field[] _externals;
 
     public _Entity(Class t) {
         EntityAnnotation entityAttribute = (EntityAnnotation) t.getAnnotation(EntityAnnotation.class);
@@ -50,11 +60,18 @@ public class _Entity {
             if (field.getColumnType() == null || field.getColumnType().equals(Void.class)) {
                 field.setColumnType(reflectField.getType());
             }
+            // Check whether the field is external (not in database) - ignore if its oneToOne
+            if (field.isForeignKey() && reflectField.getAnnotation(OneToOne.class) == null) {
+                field.setExternal(Collection.class.isAssignableFrom(field.getFieldType()));
+            }
 
             fields.add(field);
         }
 
         _fields = fields.toArray(new _Field[0]);
+
+        set_internals(fields.stream().filter(f -> !f.isExternal()).toArray(_Field[]::new));
+        set_externals(fields.stream().filter(_Field::isExternal).toArray(_Field[]::new));
     }
 
 
@@ -77,7 +94,9 @@ public class _Entity {
         f.setEntity(this);
         FieldAnnotation fieldAnno = reflectField.getAnnotation(FieldAnnotation.class);
         PrimaryKeyAnnotation primaryKeyAnno = reflectField.getAnnotation(PrimaryKeyAnnotation.class);
-        ForeignKeyAnnotation foreignKeyAnno = reflectField.getAnnotation(ForeignKeyAnnotation.class);
+        OneToOne oneToOne = reflectField.getAnnotation(OneToOne.class);
+        OneToMany oneToMany = reflectField.getAnnotation(OneToMany.class);
+        ManyToOne manyToOne = reflectField.getAnnotation(ManyToOne.class);
         String getMethod = "";
         String setMethod = "";
 
@@ -100,14 +119,31 @@ public class _Entity {
             setMethod = primaryKeyAnno.setMethod();
             // reference
             _primaryKey = f;
-        } else if (foreignKeyAnno != null) {
-            f.setColumnName(foreignKeyAnno.columnName());
-            f.setColumnType(foreignKeyAnno.columnType());
+        } else if (oneToOne != null) {
+            f.setColumnName(oneToOne.remoteColumnName());
+            f.setColumnType(oneToOne.columnType());
             f.setForeignKey(true);
-            f.setNullable(foreignKeyAnno.nullable());
+            f.setNullable(oneToOne.nullable());
+            f.setExternal(!oneToOne.isInTable());
 
-            getMethod = foreignKeyAnno.getMethod();
-            setMethod = foreignKeyAnno.setMethod();
+            getMethod = oneToOne.getMethod();
+            setMethod = oneToOne.setMethod();
+        } else if (oneToMany != null) {
+            f.setColumnName(oneToMany.remoteColumnName());
+            f.setGenericFieldAttribute(oneToMany.genericFieldAttribute());
+            f.setForeignKey(true);
+            f.setNullable(oneToMany.nullable());
+
+            getMethod = oneToMany.getMethod();
+            setMethod = oneToMany.setMethod();
+        } else if (manyToOne != null) {
+            f.setColumnName(manyToOne.columnName());
+            f.setColumnName(manyToOne.columnName());
+            f.setForeignKey(true);
+            f.setNullable(manyToOne.nullable());
+
+            getMethod = manyToOne.getMethod();
+            setMethod = manyToOne.setMethod();
         }
 
         // set get-method and set-method name, if none was specified
@@ -179,10 +215,10 @@ public class _Entity {
     {
         if(prefix == null) { prefix = ""; }
         String rval = "SELECT ";
-        for(int i = 0; i < _fields.length; i++)
+        for(int i = 0; i < _internals.length; i++)
         {
             if(i > 0) { rval += ", "; }
-            rval += prefix.trim() + _fields[i].getColumnName();
+            rval += prefix.trim() + _internals[i].getColumnName();
         }
         rval += (" FROM " + _tableName);
 

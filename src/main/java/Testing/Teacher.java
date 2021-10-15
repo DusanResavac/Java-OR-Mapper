@@ -1,6 +1,7 @@
 package Testing;
 
 import OrmFramework.*;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -28,7 +29,10 @@ public class Teacher extends Person
     protected Calendar _hireDate;
 
     /** Classes. */
-    protected ArrayList<SClass> _classes;
+    @Getter
+    @Setter
+    @OneToMany(remoteColumnName = "KTEACHER", genericFieldAttribute = SClass.class)
+    protected ArrayList<SClass> classes;
 
     /** Courses. */
     protected ArrayList<Course> _courses;

@@ -1,6 +1,6 @@
 package Testing.TestClasses;
 
-import OrmFramework.Orm;
+import OrmFramework.metamodel.Orm;
 import Testing.Teacher;
 
 public class ModifyObject {

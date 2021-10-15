@@ -20,25 +20,25 @@ public class Course
     @Getter
     @Setter
     @PrimaryKeyAnnotation
-    protected String _id;
+    protected String id;
 
     /** Name. */
     @Getter
     @Setter
     @FieldAnnotation
-    protected String _name;
+    protected String name;
 
     /** Active flag. */
     @Getter
     @Setter
     @FieldAnnotation
-    protected boolean _active;
+    protected boolean active;
 
     /** Teacher. */
     @Getter
     @Setter
     @ForeignKeyAnnotation(columnName = "KTEACHER")
-    protected Teacher _teacher;
+    protected Teacher teacher;
 
     /** Students. */
     @IgnoreAnnotation // Temporary
