@@ -31,10 +31,13 @@ public class Teacher extends Person
     /** Classes. */
     @Getter
     @Setter
-    @OneToMany(remoteColumnName = "KTEACHER", genericFieldAttribute = SClass.class)
+    @OneToMany(remoteColumnName = "KTEACHER")
     protected ArrayList<SClass> classes;
 
     /** Courses. */
+    @Getter
+    @Setter
+    @OneToMany(remoteColumnName = "KTEACHER")
     protected ArrayList<Course> _courses;
 
 }

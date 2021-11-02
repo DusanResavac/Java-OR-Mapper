@@ -1,16 +1,14 @@
 package OrmFramework.metamodel;
 
-import java.lang.reflect.InvocationTargetException;
+import OrmFramework.RelationType;
+
 import java.lang.reflect.Method;
-import java.lang.reflect.ParameterizedType;
-import java.lang.reflect.Type;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Collection;
-import java.util.Collections;
 import java.util.List;
 
 import static OrmFramework.metamodel.Orm.getConnection;
@@ -21,15 +19,18 @@ public class _Field {
     private Method _set;
     private String _name;
     private Class _fieldType;
-    private Class _genericFieldAttribute;
+    /*private Class _genericFieldAttribute;*/
 
     private Class _columnType;
     private String _columnName;
     private boolean _isPk = false;
     private boolean _isFk = false;
     private boolean _isNullable = true;
-    // for foreign keys on the n side
+    // for foreign keys
     private boolean _isExternal = false;
+    private String assignmentTable;
+    private String remoteColumnName;
+    private RelationType relation;
 
 
     public _Field(_Entity entity, String name) {
@@ -104,7 +105,7 @@ public class _Field {
 
         if (_columnType.equals(Calendar.class)) {
             SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
-            return f.format(((Calendar) obj).getTime());
+            return obj == null ? null : f.format(((Calendar) obj).getTime());
         }
 
         if (obj == null) { return null; }
@@ -169,7 +170,24 @@ public class _Field {
      * @throws SQLException
      */
     public List fill (List list, Object obj, Class c, Collection<Object> localCache) throws NoSuchMethodException, SQLException {
-        String select = Orm._getEntity(c).getSQL(null) + " WHERE " + _columnName + " = ?";
+        String select;
+
+        if (relation.equals(RelationType.MANY_TO_MANY)) {
+            _Entity fillEnt = Orm._getEntity(c);
+            _Entity objEnt = Orm._getEntity(obj);
+            String fillRemoteColumnName = null;
+
+            for (_Field external: fillEnt.get_externals()) {
+                if (external.getRelation().equals(RelationType.MANY_TO_MANY) && external.getAssignmentTable().equals(assignmentTable)) {
+                    fillRemoteColumnName = external.getRemoteColumnName();
+                }
+            }
+
+            select = fillEnt.getSQL(null) + " WHERE " + fillEnt.getPrimaryKey().getColumnName() + " IN (SELECT " + fillRemoteColumnName + " FROM " + assignmentTable + " WHERE " + remoteColumnName + " = ?)";
+        } else {
+            select = Orm._getEntity(c).getSQL(null) + " WHERE " + remoteColumnName + " = ?";
+        }
+
         PreparedStatement prepStmt = getConnection().prepareStatement(select);
         prepStmt.setObject(1, entity.getPrimaryKey().getValue(obj));
 
@@ -190,8 +208,18 @@ public class _Field {
         return list;
     }
 
-    public Object fill (Object obj, Class c, Collection<Object> localCache) throws NoSuchMethodException, SQLException {
-        String select = Orm._getEntity(c).getSQL(null) + " WHERE " + _columnName + " = ?";
+    /**
+     * In an 1:1 relation sets the external field of the table which doesn't store
+     * the foreign key in the table
+     * @param obj
+     * @param c
+     * @param localCache
+     * @return
+     * @throws NoSuchMethodException
+     * @throws SQLException
+     */
+    public Object setExternalField (Object obj, Class c, Collection<Object> localCache) throws NoSuchMethodException, SQLException {
+        String select = Orm._getEntity(c).getSQL(null) + " WHERE " + remoteColumnName + " = ?";
         PreparedStatement prepStmt = getConnection().prepareStatement(select);
         prepStmt.setObject(1, entity.getPrimaryKey().getValue(obj));
 
@@ -291,13 +319,13 @@ public class _Field {
         this._isNullable = _isNullable;
     }
 
-    public Class getGenericFieldAttribute() {
+    /*public Class getGenericFieldAttribute() {
         return _genericFieldAttribute;
     }
 
     public void setGenericFieldAttribute(Class _genericFieldAttribute) {
         this._genericFieldAttribute = _genericFieldAttribute;
-    }
+    }*/
 
     public boolean isExternal() {
         return _isExternal;
@@ -305,5 +333,29 @@ public class _Field {
 
     public void setExternal(boolean _isExternal) {
         this._isExternal = _isExternal;
+    }
+
+    public String getAssignmentTable() {
+        return assignmentTable;
+    }
+
+    public void setAssignmentTable(String assignmentTable) {
+        this.assignmentTable = assignmentTable;
+    }
+
+    public String getRemoteColumnName() {
+        return remoteColumnName;
+    }
+
+    public void setRemoteColumnName(String remoteColumnName) {
+        this.remoteColumnName = remoteColumnName;
+    }
+
+    public RelationType getRelation() {
+        return relation;
+    }
+
+    public void setRelation(RelationType relation) {
+        this.relation = relation;
     }
 }

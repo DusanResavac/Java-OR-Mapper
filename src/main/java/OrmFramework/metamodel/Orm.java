@@ -1,7 +1,6 @@
 package OrmFramework.metamodel;
 
-import OrmFramework.metamodel._Entity;
-import OrmFramework.metamodel._Field;
+import OrmFramework.RelationType;
 
 import java.sql.*;
 import java.util.*;
@@ -66,19 +65,20 @@ public class Orm {
         StringBuilder insertVars = new StringBuilder();
         ArrayList<Object> parametersInsert = new ArrayList<>();
         ArrayList<Object> parametersUpdate = new ArrayList<>();
+        _Field[] internals = ent.get_internals();
 
         boolean first = true;
-        for (int i = 0; i < ent.get_internals().length; i++) {
+        for (int i = 0; i < internals.length; i++) {
             if (i > 0) { insert.append(", "); insertVars.append(", "); }
-            insert.append(ent.get_internals()[i].getColumnName());
+            insert.append(internals[i].getColumnName());
             insertVars.append("?");
-            parametersInsert.add(ent.get_internals()[i].toColumnType(ent.get_internals()[i].getValue(obj)));
+            parametersInsert.add(internals[i].toColumnType(internals[i].getValue(obj)));
 
             // In case of a conflict, update all fields except for the primary key
-            if (!ent.get_internals()[i].isPrimaryKey()) {
+            if (!internals[i].isPrimaryKey()) {
                 if (first) { first = false; } else { update.append(", "); }
-                update.append(ent.get_internals()[i].getColumnName()).append(" = ?");
-                parametersUpdate.add(ent.get_internals()[i].toColumnType(ent.get_internals()[i].getValue(obj)));
+                update.append(internals[i].getColumnName()).append(" = ?");
+                parametersUpdate.add(internals[i].toColumnType(internals[i].getValue(obj)));
             }
         }
         insert.append(") VALUES (").append(insertVars).append(") ");
@@ -93,6 +93,97 @@ public class Orm {
 
         preparedStatement.execute();
         preparedStatement.close();
+
+        /*for (_Field external: ent.get_externals()) {
+            if (external.getRelation().equals(FieldType.MANY_TO_MANY)) {
+                insert.setLength(0);
+                String delete = "DELETE FROM " + external.getAssignmentTable() + " WHERE " + external.getRemoteColumnName() + " = ?";
+
+                preparedStatement = getConnection().prepareStatement(delete);
+                preparedStatement.setObject(1, ent.getPrimaryKey().toColumnType(ent.getPrimaryKey().getValue(obj)));
+                preparedStatement.execute();
+                preparedStatement.close();
+
+                // to save the counterpart of the n to m relation, cast it to list and save it
+                // e.g. if a student with multiple courses is saved, insert into the n:m table all the courses which this student visits
+                List externalCollection = (List) external.getValue(obj);
+                for (Object externalItem: externalCollection) {
+                    _Entity extItemEnt = Orm._getEntity(externalItem);
+                    Object mRemoteColumnName = null;
+                    for (var externalsOtherSide: extItemEnt.get_externals()) {
+                        if (externalsOtherSide.getRelation().equals(FieldType.MANY_TO_MANY) && externalsOtherSide.getAssignmentTable().equals(external.getAssignmentTable())) {
+                            mRemoteColumnName = externalsOtherSide.getRemoteColumnName();
+                        }
+                    }
+
+                    String insertString = "INSERT INTO " + external.getAssignmentTable() +
+                            " (" + external.getRemoteColumnName() + ", " + mRemoteColumnName + ") VALUES (?, ?)";
+
+                    preparedStatement = getConnection().prepareStatement(insertString);
+                    preparedStatement.setObject(1, ent.getPrimaryKey().toColumnType(ent.getPrimaryKey().getValue(obj)));
+                    preparedStatement.setObject(2, extItemEnt.getPrimaryKey().toColumnType(extItemEnt.getPrimaryKey().getValue(externalItem)));
+                    preparedStatement.execute();
+                    preparedStatement.close();
+
+                }
+
+                *//*preparedStatement = getConnection().prepareStatement(insert.toString());
+                preparedStatement.setObject(1, );*//*
+            }
+        }*/
+    }
+
+    public static void saveWithNToMRelation(Object obj, boolean createOrUpdateCounterpart) throws Exception {
+
+        _Entity ent = _getEntity(obj);
+
+        // save the object regularly
+        save(obj);
+
+        PreparedStatement preparedStatement;
+
+        // create n:m inserts for the assigned table
+        for (_Field external: ent.get_externals()) {
+            if (external.getRelation().equals(RelationType.MANY_TO_MANY)) {
+                String delete = "DELETE FROM " + external.getAssignmentTable() + " WHERE " + external.getRemoteColumnName() + " = ?";
+
+                preparedStatement = getConnection().prepareStatement(delete);
+                preparedStatement.setObject(1, ent.getPrimaryKey().toColumnType(ent.getPrimaryKey().getValue(obj)));
+                preparedStatement.execute();
+                preparedStatement.close();
+
+                // to save the counterpart of the n to m relation, cast it to list and save it
+                // e.g. if a student with multiple courses is saved, insert into the n:m table all the courses which this student visits
+                List externalCollection = (List) external.getValue(obj);
+                if (externalCollection == null) {
+                    return;
+                }
+                for (Object externalListItem: externalCollection) {
+                    _Entity extItemEnt = Orm._getEntity(externalListItem);
+                    Object mRemoteColumnName = null;
+                    for (var externalsOtherSide: extItemEnt.get_externals()) {
+                        if (externalsOtherSide.getRelation().equals(RelationType.MANY_TO_MANY) && externalsOtherSide.getAssignmentTable().equals(external.getAssignmentTable())) {
+                            mRemoteColumnName = externalsOtherSide.getRemoteColumnName();
+                        }
+                    }
+
+                    // if this is true, it replaces or creates the elements on the other side of the n:m relation
+                    if (createOrUpdateCounterpart) {
+                        save(externalListItem);
+                    }
+
+                    String insertString = "INSERT INTO " + external.getAssignmentTable() +
+                            " (" + external.getRemoteColumnName() + ", " + mRemoteColumnName + ") VALUES (?, ?)";
+
+                    preparedStatement = getConnection().prepareStatement(insertString);
+                    preparedStatement.setObject(1, ent.getPrimaryKey().toColumnType(ent.getPrimaryKey().getValue(obj)));
+                    preparedStatement.setObject(2, extItemEnt.getPrimaryKey().toColumnType(extItemEnt.getPrimaryKey().getValue(externalListItem)));
+                    preparedStatement.execute();
+                    preparedStatement.close();
+
+                }
+            }
+        }
     }
 
     /** Creates an instance by its primary key.
@@ -101,12 +192,17 @@ public class Orm {
      * @return Object. */
     protected static Object _createObject(Class c, Object pk, Collection<Object> localCache) throws Exception {
 
+        if (pk == null) {
+            return null;
+        }
+
         Object result = searchCache(c, pk, localCache);
 
         if (result == null) {
 
             _Entity ent = _getEntity(c);
 
+            // select * from Class where pk = ?
             PreparedStatement prepStmt = getConnection().prepareStatement(ent.getSQL(null) + " WHERE " + ent.getPrimaryKey().getColumnName() + " = ?");
             prepStmt.setObject(1, pk);
 
@@ -138,19 +234,22 @@ public class Orm {
             if (result == null) {
                 if (localCache == null) { localCache = new ArrayList<>(); }
                 localCache.add(result = c.getDeclaredConstructor().newInstance());
-
+            } else {
+                return result;
             }
 
+            // set property values that are listed in the table
             for (_Field f: ent.get_internals()) {
                 Object columnObject = re.getObject(f.getColumnName());
                 f.setValue(result, f.toFieldType(columnObject, localCache));
             }
 
+            // set values that come from other tables
             for (_Field f: ent.get_externals()) {
-                if (f.getGenericFieldAttribute() == null) {
-                    f.setValue(result, f.fill(result, f.getFieldType(), localCache));
-                } else {
-                    f.setValue(result, f.fill(new ArrayList<>(), result, f.getGenericFieldAttribute(), localCache));
+                switch (f.getRelation()) {
+                    case MANY_TO_MANY -> f.setValue(result, f.fill(new ArrayList<>(), result, f.getFieldType(), localCache));
+                    case ONE_TO_MANY -> f.setValue(result, f.fill(new ArrayList<>(), result, f.getFieldType(), localCache));
+                    case ONE_TO_ONE -> f.setValue(result, f.setExternalField(result, f.getFieldType(), localCache));
                 }
             }
         } catch (Exception ex) { ex.printStackTrace(); }

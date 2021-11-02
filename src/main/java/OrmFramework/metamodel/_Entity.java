@@ -7,11 +7,10 @@ import lombok.Setter;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
+import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.List;
-import java.util.stream.Collectors;
 
 public class _Entity {
     private _Field _primaryKey;
@@ -62,7 +61,8 @@ public class _Entity {
             }
             // Check whether the field is external (not in database) - ignore if its oneToOne
             if (field.isForeignKey() && reflectField.getAnnotation(OneToOne.class) == null) {
-                field.setExternal(Collection.class.isAssignableFrom(field.getFieldType()));
+                //field.setExternal(Collection.class.isAssignableFrom(field.getFieldType()));
+                field.setExternal(field.getRelation().equals(RelationType.ONE_TO_MANY) || field.getRelation().equals(RelationType.MANY_TO_MANY));
             }
 
             fields.add(field);
@@ -89,7 +89,7 @@ public class _Entity {
         return fields;
     }
 
-    private _Field getField(Field reflectField, Class t) throws NoSuchMethodException {
+    private _Field getField(Field reflectField, Class c) throws NoSuchMethodException {
         _Field f = new _Field();
         f.setEntity(this);
         FieldAnnotation fieldAnno = reflectField.getAnnotation(FieldAnnotation.class);
@@ -97,6 +97,7 @@ public class _Entity {
         OneToOne oneToOne = reflectField.getAnnotation(OneToOne.class);
         OneToMany oneToMany = reflectField.getAnnotation(OneToMany.class);
         ManyToOne manyToOne = reflectField.getAnnotation(ManyToOne.class);
+        ManyToMany manyToMany = reflectField.getAnnotation(ManyToMany.class);
         String getMethod = "";
         String setMethod = "";
 
@@ -120,30 +121,46 @@ public class _Entity {
             // reference
             _primaryKey = f;
         } else if (oneToOne != null) {
-            f.setColumnName(oneToOne.remoteColumnName());
+            // TODO: Change to remote column name if not in table
+            f.setRemoteColumnName(oneToOne.remoteColumnName());
             f.setColumnType(oneToOne.columnType());
             f.setForeignKey(true);
             f.setNullable(oneToOne.nullable());
             f.setExternal(!oneToOne.isInTable());
+            f.setRelation(RelationType.ONE_TO_ONE);
 
             getMethod = oneToOne.getMethod();
             setMethod = oneToOne.setMethod();
         } else if (oneToMany != null) {
-            f.setColumnName(oneToMany.remoteColumnName());
-            f.setGenericFieldAttribute(oneToMany.genericFieldAttribute());
+            // TODO: Change to remote column name
+            f.setRemoteColumnName(oneToMany.remoteColumnName());
+            ParameterizedType t = (ParameterizedType) reflectField.getGenericType();
+            f.setFieldType((Class) t.getActualTypeArguments()[0]);
             f.setForeignKey(true);
             f.setNullable(oneToMany.nullable());
+            f.setRelation(RelationType.ONE_TO_MANY);
 
             getMethod = oneToMany.getMethod();
             setMethod = oneToMany.setMethod();
         } else if (manyToOne != null) {
             f.setColumnName(manyToOne.columnName());
-            f.setColumnName(manyToOne.columnName());
+            f.setColumnType(manyToOne.columnType());
+            f.setRelation(RelationType.MANY_TO_ONE);
             f.setForeignKey(true);
             f.setNullable(manyToOne.nullable());
 
             getMethod = manyToOne.getMethod();
             setMethod = manyToOne.setMethod();
+        } else if (manyToMany != null) {
+            ParameterizedType t = (ParameterizedType) reflectField.getGenericType();
+            f.setFieldType((Class) t.getActualTypeArguments()[0]);
+            f.setAssignmentTable(manyToMany.assignmentTable());
+            f.setRemoteColumnName(manyToMany.remoteColumnName());
+            f.setForeignKey(true);
+            f.setRelation(RelationType.MANY_TO_MANY);
+
+            getMethod = manyToMany.getMethod();
+            setMethod = manyToMany.setMethod();
         }
 
         // set get-method and set-method name, if none was specified
@@ -158,7 +175,7 @@ public class _Entity {
 
 
         // Now look for the setter and getter method
-        for (Method method: t.getMethods()) {
+        for (Method method: c.getMethods()) {
             // only check public and non-static methods
             if (Modifier.isPublic(method.getModifiers()) && !Modifier.isStatic(method.getModifiers())) {
                 if (method.getName().equalsIgnoreCase(getMethod)) {
@@ -211,16 +228,14 @@ public class _Entity {
     /** Gets the entity SQL.
      * @param prefix Prefix.
      * @return SQL string. */
-    public String getSQL(String prefix)
-    {
-        if(prefix == null) { prefix = ""; }
+    public String getSQL(String prefix) {
+        if (prefix == null) { prefix = ""; }
         String rval = "SELECT ";
-        for(int i = 0; i < _internals.length; i++)
-        {
-            if(i > 0) { rval += ", "; }
+        for (int i = 0; i < _internals.length; i++) {
+            if (i > 0) { rval += ", "; }
             rval += prefix.trim() + _internals[i].getColumnName();
         }
-        rval += (" FROM " + _tableName);
+        rval += " FROM " + _tableName;
 
         return rval;
     }

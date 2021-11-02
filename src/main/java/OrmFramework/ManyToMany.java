@@ -7,10 +7,9 @@ import java.lang.annotation.Target;
 
 @Retention(RetentionPolicy.RUNTIME)
 @Target(ElementType.FIELD)
-public @interface OneToMany {
-    public String remoteColumnName() default "";
-    public Class columnType() default Void.class;
-    public boolean nullable() default true;
+public @interface ManyToMany {
+    public String assignmentTable();
+    public String remoteColumnName();
 
     // Get getter and setter of field
     public String getMethod() default "";

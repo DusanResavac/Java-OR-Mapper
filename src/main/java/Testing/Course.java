@@ -37,10 +37,12 @@ public class Course
     /** Teacher. */
     @Getter
     @Setter
-    @ForeignKeyAnnotation(columnName = "KTEACHER")
+    @ManyToOne(columnName = "KTEACHER")
     protected Teacher teacher;
 
     /** Students. */
-    @IgnoreAnnotation // Temporary
-    protected ArrayList<Student> _students;
+    @Getter
+    @Setter
+    @ManyToMany(assignmentTable = "STUDENTS_COURSES", remoteColumnName = "KCOURSE")
+    protected ArrayList<Student> students;
 }
