@@ -5,6 +5,7 @@ import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
 
@@ -40,4 +41,19 @@ public class Teacher extends Person
     @OneToMany(remoteColumnName = "KTEACHER")
     protected ArrayList<Course> _courses;
 
+    @Override
+    public String toString() {
+        SimpleDateFormat format1 = new SimpleDateFormat("yyyy-MM-dd");
+        return "Teacher{" +
+                "id='" + id + '\'' +
+                ", name='" + name + '\'' +
+                ", firstName='" + firstName + '\'' +
+                ", birthDate=" + format1.format(birthDate.getTime()) +
+                ", gender=" + gender +
+                ", salary=" + salary +
+                ", _hireDate=" + format1.format(_hireDate.getTime()) +
+                ", classes=" + classes +
+                ", _courses=" + _courses +
+                '}';
+    }
 }

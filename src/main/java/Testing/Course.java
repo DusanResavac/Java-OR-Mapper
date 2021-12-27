@@ -45,4 +45,11 @@ public class Course
     @Setter
     @ManyToMany(assignmentTable = "STUDENTS_COURSES", remoteColumnName = "KCOURSE")
     protected ArrayList<Student> students;
+
+    @Override
+    public String toString() {
+        return "Course{" +
+                "name='" + name + '\'' +
+                '}';
+    }
 }

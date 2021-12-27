@@ -20,8 +20,8 @@ public class Main {
 
     public static void main(String[] args) throws Exception {
 
-        Orm.connect("jdbc:mariadb://localhost:3306?user=root&password=");
-        System.out.println("Connection established......");
+        Orm.connect("jdbc:mariadb://localhost:3306/school?user=root&password=");
+        /*System.out.println("Connection established......");
         //Initialize the script runner
         ScriptRunner sr = new ScriptRunner(Orm.getConnection());
         //Creating a reader object
@@ -39,7 +39,8 @@ public class Main {
         ModifyObject.show();
         WithForeignKey.show();
         WithForeignKeyList.show();
-        WithNToM.show();
+        WithNToM.show();*/
+        WithQuery.show();
     }
 
 }

@@ -23,7 +23,7 @@ public class InsertObject {
         t.setBirthDate(bdate);
 
         Calendar hdate = Calendar.getInstance();
-        bdate.set(2015, 6, 20);
+        hdate.set(2015, 6, 20);
         t.set_hireDate(hdate);
 
         t.setSalary(50000);

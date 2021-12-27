@@ -186,6 +186,24 @@ public class Orm {
         }
     }
 
+    public static void delete(Object obj) throws NoSuchMethodException {
+        _Entity ent = _getEntity(obj);
+
+        try
+        {
+            PreparedStatement cmd = getConnection().prepareStatement("DELETE FROM " + ent.getTableName() + " WHERE " + ent.getPrimaryKey().getColumnName() + " = ?");
+            cmd.setObject(1, ent.getPrimaryKey().getValue(obj));
+            cmd.execute();
+            cmd.close();
+        }
+        catch(Exception ex) {}
+
+    }
+
+    public static SQLQuery from (Class c) {
+        return new SQLQuery(c);
+    }
+
     /** Creates an instance by its primary key.
      * @param c Class.
      * @param pk Primary key.

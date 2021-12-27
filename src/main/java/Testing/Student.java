@@ -27,4 +27,16 @@ public class Student extends Person
     @Setter
     @ManyToMany(assignmentTable = "STUDENTS_COURSES", remoteColumnName = "KSTUDENT")
     private List<Course> courses;
+
+    @Override
+    public String toString() {
+        return "Student{" +
+                "id='" + id + '\'' +
+                ", name='" + name + '\'' +
+                ", firstName='" + firstName + '\'' +
+                ", gender=" + gender +
+                ", grade=" + grade +
+                ", courses=" + courses +
+                '}';
+    }
 }

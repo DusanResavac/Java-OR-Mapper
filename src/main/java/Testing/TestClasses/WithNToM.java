@@ -2,6 +2,7 @@ package Testing.TestClasses;
 
 import OrmFramework.metamodel.Orm;
 import Testing.Course;
+import Testing.Gender;
 import Testing.Student;
 import Testing.Teacher;
 
@@ -25,10 +26,20 @@ public class WithNToM {
         student.setId("s.0");
         student.setFirstName("Gregor");
         student.setName("Onkh");
+        student.setGender(Gender.MALE);
+        student.setGrade(4);
         Student student1 = new Student();
         student1.setId("s.1");
         student1.setFirstName("Lutz");
         student1.setName("Mayer");
+        student1.setGender(Gender.MALE);
+        student1.setGrade(1);
+        Student student2 = new Student();
+        student2.setId("s.2");
+        student2.setFirstName("Lilly");
+        student2.setName("Huber");
+        student2.setGender(Gender.FEMALE);
+        student2.setGrade(2);
 
         Student finalStudent = student;
         Student finalStudent1 = student1;
@@ -38,6 +49,7 @@ public class WithNToM {
 
         Orm.saveWithNToMRelation(course, true);
         Orm.saveWithNToMRelation(student, true);
+        Orm.save(student2);
 
         student = Orm.get(Student.class, "s.0");
         student1 = Orm.get(Student.class, "s.1");

@@ -31,4 +31,13 @@ public class SClass
     @Setter
     @ManyToOne(columnName = "KTEACHER")
     protected Teacher teacher;
+
+    @Override
+    public String toString() {
+        return "SClass{" +
+                "id='" + id + '\'' +
+                ", name='" + name + '\'' +
+                ", teacher=" + teacher.getId() +
+                '}';
+    }
 }
