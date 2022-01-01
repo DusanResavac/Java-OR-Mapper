@@ -3,7 +3,9 @@ package Testing;
 import OrmFramework.FieldAnnotation;
 import OrmFramework.IgnoreAnnotation;
 import OrmFramework.PrimaryKeyAnnotation;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.Calendar;
@@ -70,5 +72,6 @@ public class Person {
      * Instance number.
      */
     @IgnoreAnnotation
+    @Getter
     protected int _instanceNumber = _N++;
 }

@@ -44,8 +44,9 @@ public class _Field {
 
     /**
      * Returns an object that fits the field type / class by converting or casting the parameter based on its class
-     * @param value
-     * @return
+     * @param value Object
+     * @param localCache Collection<Object>
+     * @return Object converted to field type
      */
     public Object toFieldType (Object value, Collection<Object> localCache) throws Exception {
 
@@ -75,7 +76,7 @@ public class _Field {
             return value == null ? null : _fieldType.getEnumConstants()[(int) value];
         }
 
-        if (_fieldType.equals(Calendar.class)) {
+        if (_fieldType.equals(Calendar.class) && value != null) {
             Calendar rval = Calendar.getInstance();
             SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
             try
@@ -93,8 +94,8 @@ public class _Field {
 
     /**
      * Returns an object that fits the column type / class by converting or casting the parameter based on its class
-     * @param obj
-     * @return
+     * @param obj Object
+     * @return Object converted to column type
      */
     public Object toColumnType(Object obj) throws NoSuchMethodException {
         // if this field is a foreign key, convert the value of the primary key this field is referencing
@@ -140,7 +141,7 @@ public class _Field {
 
     public void setValue(Object obj, Object value) throws Exception {
         if (_columnType.equals(Calendar.class)) {
-            if (value.getClass().equals(String.class)) {
+            if (value != null && value.getClass().equals(String.class)) {
                 Calendar rval = Calendar.getInstance();
                 SimpleDateFormat f = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
                 if (((String) value).length() == 10) { value = (((String) value) + " 12:00:00"); }
@@ -174,7 +175,7 @@ public class _Field {
 
         if (relation.equals(RelationType.MANY_TO_MANY)) {
             _Entity fillEnt = Orm._getEntity(c);
-            _Entity objEnt = Orm._getEntity(obj);
+
             String fillRemoteColumnName = null;
 
             for (_Field external: fillEnt.get_externals()) {
@@ -211,10 +212,10 @@ public class _Field {
     /**
      * In an 1:1 relation sets the external field of the table which doesn't store
      * the foreign key in the table
-     * @param obj
-     * @param c
-     * @param localCache
-     * @return
+     * @param obj - Object
+     * @param c - Class
+     * @param localCache - Collection<Object> Cache
+     * @return Object
      * @throws NoSuchMethodException
      * @throws SQLException
      */
@@ -238,6 +239,95 @@ public class _Field {
         return null;
     }
 
+    /**
+     * Update references of object (external fields). The foreign key columns of existing entries will be set to null and
+     * then updated.
+     * @param obj Object
+     */
+    public void updateReference(Object obj) throws NoSuchMethodException, SQLException {
+        if (!_isExternal) return;
+
+        _Entity externalEntity = Orm._getEntity(_fieldType);
+        Object pk = entity.getPrimaryKey().toColumnType(entity.getPrimaryKey().getValue(obj));
+
+        // update other side if it is external (not in the own table)
+        if (relation.equals(RelationType.ONE_TO_ONE) || relation.equals(RelationType.ONE_TO_MANY)) {
+            _Field remoteField = null;
+
+            // get Field by name
+            for (_Field f : externalEntity.get_internals()) {
+                if (f.getColumnName().equalsIgnoreCase(remoteColumnName)) {
+                    remoteField = f;
+                    break;
+                }
+            }
+
+            // delete current connection
+            if (remoteField.isNullable()) {
+                PreparedStatement cmd = Orm.getConnection().prepareStatement("UPDATE " + externalEntity.getTableName() + " SET " + remoteColumnName + " = NULL WHERE " + remoteColumnName + " = ?");
+                cmd.setObject(1, pk);
+                cmd.execute();
+                cmd.close();
+            }
+        }
+
+        switch (relation) {
+            case MANY_TO_MANY -> {
+                // delete all existing entries for this object and create them again
+                // remoteColumnName = KCOURSE for example
+                PreparedStatement cmd = Orm.getConnection().prepareStatement("DELETE FROM " + assignmentTable + " WHERE " + remoteColumnName + " = ?");
+                cmd.setObject(1, pk);
+                cmd.execute();
+                cmd.close();
+
+
+                if (getValue(obj) != null) {
+                    // externalRemoteField = e.g. External field of student that saves the n:m relation (remoteColumnName = KSTUDENT)
+                    _Field externalRemoteField = null;
+                    for (_Field f: externalEntity.get_externals()) {
+                        if (f.assignmentTable.equalsIgnoreCase(assignmentTable)) {
+                            externalRemoteField = f;
+                            break;
+                        }
+                    }
+
+                    for (Object i : (Iterable) getValue(obj)) {
+                        cmd = Orm.getConnection().prepareStatement("INSERT INTO " + assignmentTable + "(" + remoteColumnName + ", " + externalRemoteField.remoteColumnName + ") VALUES (?, ?)");
+                        cmd.setObject(1, pk);
+                        cmd.setObject(2, externalEntity.getPrimaryKey().toColumnType(externalEntity.getPrimaryKey().getValue(i)));
+                        cmd.execute();
+                        cmd.close();
+                    }
+                }
+            }
+            case ONE_TO_MANY -> {
+                Object externalObject = getValue(obj);
+
+                if (externalObject != null) {
+                    for (Object i : (Iterable) externalObject) {
+                        PreparedStatement cmd = Orm.getConnection().prepareStatement("UPDATE " + externalEntity.getTableName() + " SET " + remoteColumnName + " = ? WHERE " + externalEntity.getPrimaryKey().getColumnName() + " = ?");
+                        cmd.setObject(1, pk);
+                        cmd.setObject(2, externalEntity.getPrimaryKey().toColumnType(externalEntity.getPrimaryKey().getValue(i)));
+                        cmd.execute();
+                        cmd.close();
+                    }
+                }
+            }
+            case ONE_TO_ONE -> {
+                Object externalPk = externalEntity.getPrimaryKey().toColumnType(externalEntity.getPrimaryKey().getValue(getValue(obj)));
+
+                // Only update to new relation if such a relation exists
+                if (externalPk != null) {
+                    PreparedStatement cmd = Orm.getConnection().prepareStatement("UPDATE " + externalEntity.getTableName() + " SET " + remoteColumnName + " = ? WHERE " + externalEntity.getPrimaryKey().getColumnName() + " = ?");
+                    cmd.setObject(1, pk);
+                    cmd.setObject(2, externalPk);
+                    cmd.execute();
+                    cmd.close();
+                }
+
+            }
+        }
+    }
 
     public _Entity getEntity() {
         return entity;
@@ -358,4 +448,6 @@ public class _Field {
     public void setRelation(RelationType relation) {
         this.relation = relation;
     }
+
+
 }

@@ -2,7 +2,9 @@ package Testing;
 
 import OrmFramework.EntityAnnotation;
 import OrmFramework.ManyToMany;
+import lombok.AllArgsConstructor;
 import lombok.Getter;
+import lombok.NoArgsConstructor;
 import lombok.Setter;
 
 import java.util.Calendar;
@@ -11,6 +13,8 @@ import java.util.List;
 /** This is a student implementation (from School example).
  * Stolen from https://github.com/robbiblubber/SWE3.Demo.JAVA/blob/master/SWE3.Demo.SampleApp/src/swe3/demo/sampleapp/Student.java*/
 @EntityAnnotation(tableName = "STUDENTS")
+@AllArgsConstructor
+@NoArgsConstructor
 public class Student extends Person
 {
     //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////

@@ -16,10 +16,13 @@ public class WithForeignKey {
         c.setName("Demonology 101");
         c.setTeacher(t);
 
-        Orm.save(c);
+        Orm.save(c, false);
+        System.out.println();
 
         c = Orm.get(SClass.class, "c.0");
         System.out.printf("Teacher of %s is %s%n%n", c.getName(), c.getTeacher().getName());
+
+        System.out.println("\n");
     }
 
 }

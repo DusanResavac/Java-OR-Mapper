@@ -16,8 +16,15 @@ public class WithForeignKeyList {
         clazz.setName("Machine Learning 2");
         clazz.setId("c.1");
         clazz.setTeacher(t);
+        SClass clazz2 = new SClass();
+        clazz2.setName("Mathematics");
+        clazz2.setId("c.2");
+        clazz2.setTeacher(t);
 
-        Orm.save(clazz);
+        Orm.save(clazz, false);
+        System.out.println();
+        Orm.save(clazz2, false);
+        System.out.println();
 
         t = Orm.get(Teacher.class, "t.0");
 
@@ -27,7 +34,7 @@ public class WithForeignKeyList {
             System.out.println(c.getName());
         }
 
-        System.out.println();
+        System.out.println("\n");
     }
 
 }

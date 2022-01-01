@@ -19,7 +19,8 @@ public class ModifyObject {
         System.out.println("Salary for " + t.getFirstName() + " " + t.getName() + " is now " + Integer.toString(t.getSalary()) + " Pesos.");
 
         try {
-            Orm.save(t);
+            Orm.save(t, false);
+            System.out.println();
         }
         catch(Exception ex) { ex.printStackTrace(); }
 

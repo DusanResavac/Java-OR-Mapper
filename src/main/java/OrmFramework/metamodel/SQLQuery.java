@@ -33,6 +33,14 @@ public class SQLQuery implements Query {
     }
 
 
+    /**
+     * Saves the entered parameters to the instance (this)
+     * @param columnName String
+     * @param operation QueryOperations enum
+     * @param connection QueryConnection enum
+     * @param objects Object...
+     * @return SQLQuery
+     */
     private Query saveValues(String columnName, QueryOperations operation, QueryConnection connection, Object... objects) {
         this.columnName = columnName;
         this.operation = operation;
@@ -81,6 +89,18 @@ public class SQLQuery implements Query {
         return new SQLQuery(this);
     }
 
+    /**
+     * Performs a custom select that is specified in the second parameter sqlString. It is recommended to set the prefix to
+     * some name + DOT. E.g. for students: "s.". Parameters that are stated in the Object... parameter will be appended
+     * as arguments for the preparedStatement. If user input is validated, the use of this parameter is highly encouraged.
+     * @param prefix String prefix before each column
+     * @param sqlString SQL String
+     * @param parameters Object...
+     * @param <T> Object type (Class)
+     * @return List of objects of specified type T
+     * @throws SQLException thrown when an SQL error occurs
+     * @throws NoSuchMethodException thrown when a needed field doesn't have the necessary get and set methods
+     */
     public <T> List<T> getWithRawSQL(String prefix, String sqlString, Object... parameters) throws SQLException, NoSuchMethodException {
         _Entity ent = Orm._getEntity(this.getC());
         sqlString = ent.getSQL(prefix) + sqlString;
@@ -101,6 +121,14 @@ public class SQLQuery implements Query {
         return result;
     }
 
+    /**
+     * Converts all entered commands to matching sql syntax and returns the results.
+     * @param <T> Object type (Class)
+     * @return List of Objects of the specified type T
+     * @throws NoSuchMethodException
+     * @throws SQLException thrown if an SQL error occurs
+     * @throws NoSuchFieldException thrown if the specified column name in one of commands could not be found
+     */
     @Override
     public <T> List<T> get() throws NoSuchMethodException, SQLException, NoSuchFieldException {
         List<Query> queryOrder = reverseList();
@@ -111,9 +139,8 @@ public class SQLQuery implements Query {
             PreparedStatement prepStmt = Orm.getConnection().prepareStatement(Orm._getEntity(this.c).getSQL(null));
             ResultSet re = prepStmt.executeQuery();
 
-            List<Object> localCache = new ArrayList<>();
             while (re.next()) {
-                result.add((T) Orm._createObject(this.c, re, localCache));
+                result.add((T) Orm._createObject(this.c, re, null));
             }
 
             return result;
@@ -161,7 +188,7 @@ public class SQLQuery implements Query {
                 }
             }
             if (field == null) {
-                throw new NoSuchFieldException("Could not find column that matches the column name");
+                throw new NoSuchFieldException("Could not find column that matches the column name: " + query.getColumnName());
             }
             // finally set all parameters
             for (Object obj: query.getParameters()) {

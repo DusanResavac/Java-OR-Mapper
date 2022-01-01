@@ -30,10 +30,12 @@ public class InsertObject {
 
         try
         {
-            Orm.save(t);
+            Orm.save(t, false);
+            System.out.println();
         }
         catch(Exception ex)
         {
+            ex.printStackTrace();
             System.out.println("Failed to save: " + ex.getMessage());
         }
 

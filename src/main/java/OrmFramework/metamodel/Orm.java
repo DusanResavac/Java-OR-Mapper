@@ -1,6 +1,10 @@
 package OrmFramework.metamodel;
 
+import OrmFramework.Cache;
+import OrmFramework.NMRelation;
 import OrmFramework.RelationType;
+import lombok.Getter;
+import lombok.Setter;
 
 import java.sql.*;
 import java.util.*;
@@ -10,6 +14,204 @@ public class Orm {
     private static final Map<Class, _Entity> _entities = new HashMap<>();
     /** Database connection. */
     private static Connection _connection;
+    @Getter @Setter
+    private static Cache _cache = null;
+
+    public static void clearTables (String schema) throws SQLException {
+        PreparedStatement prepStmt = _connection.prepareStatement(
+                "SELECT table_name" + " FROM " + "information_schema.tables " +
+                        "WHERE" + " table_schema = ?" );
+        prepStmt.setString(1, schema);
+        ResultSet resultSet = prepStmt.executeQuery();
+
+        while (resultSet.next()) {
+            PreparedStatement prepStmt2 = _connection.prepareStatement("DELETE FROM " + resultSet.getString(1));
+            prepStmt2.execute();
+            prepStmt2.close();
+            System.out.println("DELETE FROM " + resultSet.getString(1) + System.lineSeparator());
+        }
+
+        prepStmt.close();
+    }
+
+    /**
+     * Creates all tables in the order they are entered. In case of n:m relations additional tables will be generated.
+     * @param classes
+     * @throws NoSuchMethodException
+     * @throws SQLException
+     */
+    public static void createTables (Class<?>... classes) throws NoSuchMethodException, SQLException {
+        Map<String, NMRelation> nmRelations = new HashMap<>();
+
+        for (Class<?> c: classes) {
+            _Entity ent = _getEntity(c);
+            StringBuilder create = new StringBuilder("CREATE TABLE ")
+                    .append(ent.getTableName())
+                    .append("(\n");
+
+
+            // Create the internal fields first
+            for (_Field f: ent.get_internals()) {
+                create.append(f.getColumnName()).append(" ");
+                String columnType = getColumnType(f, f.isForeignKey() || f.isPrimaryKey());
+
+                create.append(columnType).append(" ");
+
+                if (f.isPrimaryKey()) {
+                    create.append("PRIMARY KEY ");
+                }
+                if (!f.isNullable()) {
+                    create.append("not null ");
+                }
+
+                create.append(",\n");
+
+                if (f.isForeignKey()) {
+                    create.append("FOREIGN KEY (")
+                            .append(f.getColumnName())
+                            .append(")")
+                            .append(" REFERENCES ")
+                            .append(_getEntity(f.getFieldType()).getTableName())
+                            .append(" (")
+                            .append(_getEntity(f.getFieldType()).getPrimaryKey().getColumnName())
+                            .append("),\n");
+                }
+            }
+
+            create.delete(create.length()-2, create.length()).append(");");
+
+            PreparedStatement prepStmt = Orm.getConnection().prepareStatement(create.toString());
+            prepStmt.execute();
+            prepStmt.close();
+
+            System.out.println(create);
+            System.out.println();
+
+            // save all n:m tables that need to be created
+            for (_Field f: ent.get_externals()) {
+                if (f.getRelation().equals(RelationType.MANY_TO_MANY)) {
+                    // if the key already exists, set the second part of the relation
+                    if (nmRelations.containsKey(f.getAssignmentTable())) {
+                        NMRelation temp = nmRelations.get(f.getAssignmentTable());
+                        temp.setEB(ent);
+                        temp.setFB(f);
+                        nmRelations.put(f.getAssignmentTable(), temp);
+                    } else {
+                        nmRelations.put(f.getAssignmentTable(), new NMRelation(ent, f, null, null));
+                    }
+                }
+            }
+        }
+
+        // create all n:m tables
+        for (Map.Entry<String, NMRelation> entry : nmRelations.entrySet()) {
+            String assignmentTable = entry.getKey();
+            NMRelation nmRelation = entry.getValue();
+            StringBuilder create = new StringBuilder("CREATE TABLE ")
+                    .append(assignmentTable).append(" (\n")
+                    .append(nmRelation.getFA().getRemoteColumnName())
+                    .append(" ")
+                    .append(getColumnType(nmRelation.getEA().getPrimaryKey(), true))
+                    .append(" not null,\n");
+            create.append(nmRelation.getFB().getRemoteColumnName())
+                    .append(" ")
+                    .append(getColumnType(nmRelation.getEB().getPrimaryKey(), true))
+                    .append(" not null,\n");
+            create.append("PRIMARY KEY (")
+                    .append(nmRelation.getFA().getRemoteColumnName())
+                    .append(", ")
+                    .append(nmRelation.getFB().getRemoteColumnName())
+                    .append("),\n");
+            create.append("FOREIGN KEY (")
+                    .append(nmRelation.getFA().getRemoteColumnName())
+                    .append(") REFERENCES ")
+                    .append(nmRelation.getEA().getTableName())
+                    .append(" (").append(nmRelation.getEA().getPrimaryKey().getColumnName()).append(")")
+                    .append(" ON DELETE CASCADE,\n");
+            create.append("FOREIGN KEY (")
+                    .append(nmRelation.getFB().getRemoteColumnName())
+                    .append(") REFERENCES ")
+                    .append(nmRelation.getEB().getTableName())
+                    .append(" (").append(nmRelation.getEB().getPrimaryKey().getColumnName()).append(")")
+                    .append(" ON DELETE CASCADE);");
+
+
+            PreparedStatement prepStmt = Orm.getConnection().prepareStatement(create.toString());
+            prepStmt.execute();
+            prepStmt.close();
+            System.out.println(create);
+            System.out.println();
+        }
+    }
+
+    /**
+     * Drop all tables specified in the schema
+     * @param schema
+     * @throws SQLException
+     */
+    public static void deleteTables(String schema) throws SQLException {
+        PreparedStatement prepStmt = _connection.prepareStatement(
+                "SELECT table_name" + " FROM " + "information_schema.tables " +
+                        "WHERE" + " table_schema = ?" );
+        prepStmt.setString(1, schema);
+        ResultSet resultSet = prepStmt.executeQuery();
+        try {
+            _connection.setAutoCommit(false);
+            _connection.commit();
+            PreparedStatement prepStmt2 = _connection.prepareStatement("SET FOREIGN_KEY_CHECKS = 0");
+            prepStmt2.execute();
+            prepStmt2.close();
+            while (resultSet.next()) {
+                String tableName = resultSet.getString(1);
+                System.out.println("DROP TABLE IF EXISTS " + tableName + System.lineSeparator());
+                prepStmt2 = _connection.prepareStatement("DROP TABLE IF EXISTS " + tableName);
+                prepStmt2.execute();
+                prepStmt2.close();
+            }
+            prepStmt2 = _connection.prepareStatement("SET FOREIGN_KEY_CHECKS = 1");
+            prepStmt2.execute();
+            prepStmt2.close();
+        } catch (SQLException e) {
+            _connection.rollback();
+            e.printStackTrace();
+        } finally {
+            _connection.setAutoCommit(true);
+            prepStmt.close();
+        }
+    }
+
+    /**
+     * Get database column type from specific _Field object.
+     * @param f
+     * @param isForeignOrPrimaryKey
+     * @return
+     * @throws NoSuchMethodException
+     */
+    public static String getColumnType(_Field f, boolean isForeignOrPrimaryKey) throws NoSuchMethodException {
+
+        // switch statement doesn't work with classes?
+        if (f.getColumnType().equals(int.class) || f.getColumnType().equals(Integer.class)) {
+            return "INTEGER";
+        }
+        if (f.getColumnType().equals(String.class) || f.getColumnType().isEnum()) {
+            return isForeignOrPrimaryKey ? "VARCHAR(24)" : "TEXT";
+        }
+        if (f.getColumnType().equals(boolean.class) || f.getColumnType().equals(Boolean.class)) {
+            return "BOOLEAN";
+        }
+        if (f.getColumnType().equals(float.class) || f.getColumnType().equals(Float.class)) {
+            return "FLOAT";
+        }
+        if (f.getColumnType().equals(double.class) || f.getColumnType().equals(Double.class)) {
+            return "DOUBLE";
+        }
+        if (f.getColumnType().equals(Calendar.class)) {
+            return "DATETIME";
+        }
+
+        // F is probably a referenced object -> get Primary key and get its column type
+        return getColumnType(_getEntity(f.getColumnType()).getPrimaryKey(), isForeignOrPrimaryKey);
+    }
 
     /**
      * Returns the matching _Entity to an object and creates it if necessary
@@ -55,10 +257,140 @@ public class Orm {
         _connection = DriverManager.getConnection(url);
     }
 
-    /** Saves an object.
-     * @param obj Object. */
-    public static void save(Object obj) throws Exception {
+    /**
+     * Saves an object into the database and updates the direct foreign key references (eg. in 1:N - One teacher can teach multiple classes.
+     * If the classes in a teacher object are changed and the teacher is updated, the remote column in the classes table will be updated.).
+     * This behaviour can also be extended recursively, if the second parameter is set to true. It that case the foreign key objects
+     * and their references and foreign keys will be updated. This makes it possible to call this method once without worrying about
+     * dependency order.
+     * @param obj Object that should be saved
+     * @param changeReferencedObjects boolean whether the save should happen recursively for all references / foreign keys
+     * @throws NoSuchMethodException thrown when an entity cannot be found
+     * @throws SQLException thrown when an SQL error occurs
+     */
+    public static void save(Object obj, boolean changeReferencedObjects) throws NoSuchMethodException, SQLException {
+        System.out.println("--- saving - " + obj.getClass() + " - " + _getEntity(obj).getPrimaryKey().getValue(obj));
+        _save(obj, changeReferencedObjects, null);
+
+        // Update references, after all objects are created / updated
+        _updateReference(obj, changeReferencedObjects, null);
+
+    }
+
+    /**
+     * Internal method that updates the references / foreign keys of the specified object.
+     * E.g. in 1:N - One teacher can teach multiple classes.
+     * If the classes in a teacher object are changed and the teacher is updated, the remote column in the classes table will be updated
+     * (Since that teacher for example does no longer teach a certain class). The second parameter "updateReferencesRecursively" should
+     * be set with care, because it can overwrite changes involuntarily (previous save operations) if the references are not up-to-date.
+     * @param obj Object of which the references should be updated
+     * @param updateReferencesRecursively boolean whether the references should be updated recursively (also of other references)
+     * @param localCache Collection<Object> should be set to null if there is no specific reason to do otherwise
+     * @throws NoSuchMethodException thrown when an entity is not found
+     * @throws SQLException thrown when an SQL exception is encountered
+     */
+    private static void _updateReference(Object obj, boolean updateReferencesRecursively, Collection<Object> localCache) throws NoSuchMethodException, SQLException {
+        if (obj == null) {
+            return;
+        }
+
         _Entity ent = _getEntity(obj);
+
+        if (localCache == null) {
+            localCache = new ArrayList<>();
+        } else {
+            for (Object o: localCache) {
+                if (!o.getClass().equals(obj.getClass())) { continue; }
+                Object pkO = ent.getPrimaryKey().getValue(o);
+                Object pkObj = ent.getPrimaryKey().getValue(obj);
+                // object already saved
+                if (pkO.equals(pkObj)) { return; }
+            }
+        }
+
+        localCache.add(obj);
+
+        for (_Field f: ent.get_externals()) {
+            // create or update references of foreign keys
+            if (updateReferencesRecursively) {
+                Object referencedObject = f.getValue(obj);
+                // if it's not a list only update the object otherwise update each element of the list
+                if (!(referencedObject instanceof Collection<?>)) {
+                    _updateReference(referencedObject, true, localCache);
+                } else {
+                    for (Object i : (Iterable) referencedObject) {
+                        _updateReference(i, true, localCache);
+                    }
+                }
+            }
+
+            var temp = f.getValue(obj);
+            if (temp instanceof Collection<?>) {
+                for (Object o : (Iterable) temp) {
+                    if (o != null) {
+                        System.out.println("updating references - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj) + " " + f.getRelation() + " " + f.getFieldType() + " : " + _getEntity(o).getPrimaryKey().getValue(o));
+                    }
+                }
+            } else {
+                Object pkOfReference = temp == null ? null : _getEntity(temp).getPrimaryKey().getValue(temp);
+                System.out.println("updating references - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj) + " " + f.getRelation() + " " + f.getFieldType() + " : " + pkOfReference);
+            }
+
+            f.updateReference(obj);
+        }
+    }
+
+    /**
+     * Saves an object and its foreign key objects. It is also possible to save the objects of the foreign keys if the second parameter
+     * "changeReferencedObjects" is set to true. This way all foreign keys / references will be saved recursively.
+     * ATTENTION: This method should not be used directly since it doesn't update the references / foreign key columns (key constraints) -
+     * instead use the public save method.
+     * @param obj Object that should be saved
+     * @param changeReferencedObjects boolean whether the save should occur recursively for all foreign key objects / references
+     * @param localCache Collection<Object> should be set to null if there is no specific reason to do otherwise
+     * @throws NoSuchMethodException thrown when an entity is not found
+     * @throws SQLException thrown when an SQL exception is encountered
+     */
+    private static void _save(Object obj, boolean changeReferencedObjects, Collection<Object> localCache) throws NoSuchMethodException, SQLException {
+
+        if (obj == null) {
+            return;
+        }
+
+        _Entity ent = _getEntity(obj);
+
+        if (localCache == null) {
+            localCache = new ArrayList<>();
+        }
+
+
+        for (Object o: localCache) {
+            if (!o.getClass().equals(obj.getClass())) { continue; }
+            Object pkO = ent.getPrimaryKey().getValue(o);
+            Object pkObj = ent.getPrimaryKey().getValue(obj);
+            // object already saved
+            if (pkO.equals(pkObj)) { return; }
+        }
+
+        localCache.add(obj);
+
+        if (changeReferencedObjects) {
+            for (_Field f : ent.getFields()) {
+                // create or update reference
+                if (f.isForeignKey()) {
+                    Object referencedObject = f.getValue(obj);
+                    // if it's not a list only save the object otherwise save each element of the list
+                    if (!(referencedObject instanceof Collection<?>)) {
+                        _save(f.getValue(obj), true, localCache);
+                    } else {
+                        for (Object i : (Iterable) referencedObject) {
+                            _save(i, true, localCache);
+                        }
+                    }
+                }
+            }
+        }
+
 
         StringBuilder insert = new StringBuilder("INSERT INTO " + ent.getTableName() + " (");
         StringBuilder update = new StringBuilder("ON DUPLICATE KEY UPDATE ");
@@ -94,112 +426,37 @@ public class Orm {
         preparedStatement.execute();
         preparedStatement.close();
 
-        /*for (_Field external: ent.get_externals()) {
-            if (external.getRelation().equals(FieldType.MANY_TO_MANY)) {
-                insert.setLength(0);
-                String delete = "DELETE FROM " + external.getAssignmentTable() + " WHERE " + external.getRemoteColumnName() + " = ?";
 
-                preparedStatement = getConnection().prepareStatement(delete);
-                preparedStatement.setObject(1, ent.getPrimaryKey().toColumnType(ent.getPrimaryKey().getValue(obj)));
-                preparedStatement.execute();
-                preparedStatement.close();
+        System.out.println("saved - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj));
 
-                // to save the counterpart of the n to m relation, cast it to list and save it
-                // e.g. if a student with multiple courses is saved, insert into the n:m table all the courses which this student visits
-                List externalCollection = (List) external.getValue(obj);
-                for (Object externalItem: externalCollection) {
-                    _Entity extItemEnt = Orm._getEntity(externalItem);
-                    Object mRemoteColumnName = null;
-                    for (var externalsOtherSide: extItemEnt.get_externals()) {
-                        if (externalsOtherSide.getRelation().equals(FieldType.MANY_TO_MANY) && externalsOtherSide.getAssignmentTable().equals(external.getAssignmentTable())) {
-                            mRemoteColumnName = externalsOtherSide.getRemoteColumnName();
-                        }
-                    }
-
-                    String insertString = "INSERT INTO " + external.getAssignmentTable() +
-                            " (" + external.getRemoteColumnName() + ", " + mRemoteColumnName + ") VALUES (?, ?)";
-
-                    preparedStatement = getConnection().prepareStatement(insertString);
-                    preparedStatement.setObject(1, ent.getPrimaryKey().toColumnType(ent.getPrimaryKey().getValue(obj)));
-                    preparedStatement.setObject(2, extItemEnt.getPrimaryKey().toColumnType(extItemEnt.getPrimaryKey().getValue(externalItem)));
-                    preparedStatement.execute();
-                    preparedStatement.close();
-
-                }
-
-                *//*preparedStatement = getConnection().prepareStatement(insert.toString());
-                preparedStatement.setObject(1, );*//*
-            }
-        }*/
-    }
-
-    public static void saveWithNToMRelation(Object obj, boolean createOrUpdateCounterpart) throws Exception {
-
-        _Entity ent = _getEntity(obj);
-
-        // save the object regularly
-        save(obj);
-
-        PreparedStatement preparedStatement;
-
-        // create n:m inserts for the assigned table
-        for (_Field external: ent.get_externals()) {
-            if (external.getRelation().equals(RelationType.MANY_TO_MANY)) {
-                String delete = "DELETE FROM " + external.getAssignmentTable() + " WHERE " + external.getRemoteColumnName() + " = ?";
-
-                preparedStatement = getConnection().prepareStatement(delete);
-                preparedStatement.setObject(1, ent.getPrimaryKey().toColumnType(ent.getPrimaryKey().getValue(obj)));
-                preparedStatement.execute();
-                preparedStatement.close();
-
-                // to save the counterpart of the n to m relation, cast it to list and save it
-                // e.g. if a student with multiple courses is saved, insert into the n:m table all the courses which this student visits
-                List externalCollection = (List) external.getValue(obj);
-                if (externalCollection == null) {
-                    return;
-                }
-                for (Object externalListItem: externalCollection) {
-                    _Entity extItemEnt = Orm._getEntity(externalListItem);
-                    Object mRemoteColumnName = null;
-                    for (var externalsOtherSide: extItemEnt.get_externals()) {
-                        if (externalsOtherSide.getRelation().equals(RelationType.MANY_TO_MANY) && externalsOtherSide.getAssignmentTable().equals(external.getAssignmentTable())) {
-                            mRemoteColumnName = externalsOtherSide.getRemoteColumnName();
-                        }
-                    }
-
-                    // if this is true, it replaces or creates the elements on the other side of the n:m relation
-                    if (createOrUpdateCounterpart) {
-                        save(externalListItem);
-                    }
-
-                    String insertString = "INSERT INTO " + external.getAssignmentTable() +
-                            " (" + external.getRemoteColumnName() + ", " + mRemoteColumnName + ") VALUES (?, ?)";
-
-                    preparedStatement = getConnection().prepareStatement(insertString);
-                    preparedStatement.setObject(1, ent.getPrimaryKey().toColumnType(ent.getPrimaryKey().getValue(obj)));
-                    preparedStatement.setObject(2, extItemEnt.getPrimaryKey().toColumnType(extItemEnt.getPrimaryKey().getValue(externalListItem)));
-                    preparedStatement.execute();
-                    preparedStatement.close();
-
-                }
-            }
+        if (_cache != null) {
+            _cache.put(obj);
         }
     }
 
-    public static void delete(Object obj) throws NoSuchMethodException {
+    /**
+     * Deletes an object
+     * @param obj Object which should be deleted
+     * @throws NoSuchMethodException thrown when an entity is not found
+     * @throws SQLException thrown when an SQL exception is encountered
+     */
+    public static void delete(Object obj) throws NoSuchMethodException, SQLException {
         _Entity ent = _getEntity(obj);
 
-        try
-        {
-            PreparedStatement cmd = getConnection().prepareStatement("DELETE FROM " + ent.getTableName() + " WHERE " + ent.getPrimaryKey().getColumnName() + " = ?");
-            cmd.setObject(1, ent.getPrimaryKey().getValue(obj));
-            cmd.execute();
-            cmd.close();
-        }
-        catch(Exception ex) {}
+        PreparedStatement cmd = getConnection().prepareStatement("DELETE FROM " + ent.getTableName() + " WHERE " + ent.getPrimaryKey().getColumnName() + " = ?");
+        cmd.setObject(1, ent.getPrimaryKey().getValue(obj));
+        cmd.execute();
+        cmd.close();
+
+        if(_cache != null) { _cache.remove(obj); }
 
     }
 
+    /**
+     * Creates an SQLQuery instance.
+     * @param c Class
+     * @return SQLQuery
+     */
     public static SQLQuery from (Class c) {
         return new SQLQuery(c);
     }
@@ -207,13 +464,15 @@ public class Orm {
     /** Creates an instance by its primary key.
      * @param c Class.
      * @param pk Primary key.
-     * @return Object. */
+     * @return Object.
+     */
     protected static Object _createObject(Class c, Object pk, Collection<Object> localCache) throws Exception {
 
         if (pk == null) {
             return null;
         }
 
+        // search cache since a request might be saved
         Object result = searchCache(c, pk, localCache);
 
         if (result == null) {
@@ -238,10 +497,11 @@ public class Orm {
         return result;
     }
 
-    /** Creates an object from a database result set.
-     * @param c Type.
-     * @param re Result set.
-     * @return Object. */
+    /** Creates an object from a database result set
+     * @param c Class
+     * @param re Result set
+     * @return Object
+     */
     protected static Object _createObject(Class c, ResultSet re, Collection<Object> localCache) throws NoSuchMethodException {
         _Entity ent = _getEntity(c);
         Object result = null;
@@ -270,16 +530,21 @@ public class Orm {
                     case ONE_TO_ONE -> f.setValue(result, f.setExternalField(result, f.getFieldType(), localCache));
                 }
             }
+
+            if (_cache != null) {
+                _cache.put(result);
+            }
         } catch (Exception ex) { ex.printStackTrace(); }
 
         return result;
     }
 
     /** Creates an instance by its primary keys.
-     * @param <T> Type.
-     * @param t Type class.
-     * @param pk Primary key.
-     * @return Object. */
+     * @param <T> Type
+     * @param t Type class
+     * @param pk Primary key
+     * @return Object
+     */
     public static <T> T get(Class<T> t, Object pk) {
         try {
             return (T) _createObject(t, pk, null);
@@ -288,6 +553,11 @@ public class Orm {
     }
 
     protected static Object searchCache(Class c, Object pk, Collection<Object> localCache) throws NoSuchMethodException {
+
+        if (_cache != null && _cache.contains(c, pk)) {
+            return _cache.get(c, pk);
+        }
+
         if (localCache != null) {
             for (Object obj: localCache) {
                 if (!obj.getClass().equals(c)) { continue; }

@@ -29,7 +29,7 @@ public class SClass
     /** Teacher. */
     @Getter
     @Setter
-    @ManyToOne(columnName = "KTEACHER")
+    @ManyToOne(columnName = "KTEACHER", nullable = false)
     protected Teacher teacher;
 
     @Override

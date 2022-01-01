@@ -24,20 +24,25 @@ public class _Entity {
     @Setter
     private _Field[] _externals;
 
-    public _Entity(Class t) {
-        EntityAnnotation entityAttribute = (EntityAnnotation) t.getAnnotation(EntityAnnotation.class);
+    /**
+     * Creates an Entity metamodel of a class used by the Orm to perform operations on objects and
+     * connect them to the presentation in the database
+     * @param c Class
+     */
+    public _Entity(Class c) {
+        EntityAnnotation entityAttribute = (EntityAnnotation) c.getAnnotation(EntityAnnotation.class);
 
         if (entityAttribute == null || isNullOrWhiteSpace(entityAttribute.tableName())) {
-            _tableName = t.getSimpleName().toUpperCase();
+            _tableName = c.getSimpleName().toUpperCase();
         } else {
             _tableName = entityAttribute.tableName();
         }
 
-        _member = t;
+        _member = c;
         List<_Field> fields = new ArrayList<_Field>();
 
         // get all Fields (including private and inherited ones)
-        List<Field> fieldList = getAllFields(t);
+        List<Field> fieldList = getAllFields(c);
 
         for (Field reflectField: fieldList) {
             if (reflectField.getAnnotation(IgnoreAnnotation.class) != null ||
@@ -48,7 +53,7 @@ public class _Entity {
 
             _Field field = null;
             try {
-                field = getField(reflectField, t);
+                field = getField(reflectField, c);
             } catch (NoSuchMethodException e) {
                 System.out.println(e.getMessage());
                 continue;
@@ -59,9 +64,9 @@ public class _Entity {
             if (field.getColumnType() == null || field.getColumnType().equals(Void.class)) {
                 field.setColumnType(reflectField.getType());
             }
-            // Check whether the field is external (not in database) - ignore if its oneToOne
+            // Check whether the field is external (not in database) - ignore if its oneToOne,
+            // since that case was already considered in the getField method
             if (field.isForeignKey() && reflectField.getAnnotation(OneToOne.class) == null) {
-                //field.setExternal(Collection.class.isAssignableFrom(field.getFieldType()));
                 field.setExternal(field.getRelation().equals(RelationType.ONE_TO_MANY) || field.getRelation().equals(RelationType.MANY_TO_MANY));
             }
 
@@ -75,6 +80,11 @@ public class _Entity {
     }
 
 
+    /**
+     * Returns all fields (including private and inherited private ones) of a specified class.
+     * @param c Class
+     * @return List<Field>
+     */
     public List<Field> getAllFields(Class c) {
         if (c == null) {
             return null;
@@ -89,6 +99,14 @@ public class _Entity {
         return fields;
     }
 
+    /**
+     Creates an _Field metamodel of a Field used by the Orm to perform operations on objects and
+     * connect them to the presentation in the database
+     * @param reflectField Field
+     * @param c Class
+     * @return _Field
+     * @throws NoSuchMethodException thrown if no get or set method for the field was found
+     */
     private _Field getField(Field reflectField, Class c) throws NoSuchMethodException {
         _Field f = new _Field();
         f.setEntity(this);
@@ -121,7 +139,6 @@ public class _Entity {
             // reference
             _primaryKey = f;
         } else if (oneToOne != null) {
-            // TODO: Change to remote column name if not in table
             f.setRemoteColumnName(oneToOne.remoteColumnName());
             f.setColumnType(oneToOne.columnType());
             f.setForeignKey(true);
@@ -132,7 +149,6 @@ public class _Entity {
             getMethod = oneToOne.getMethod();
             setMethod = oneToOne.setMethod();
         } else if (oneToMany != null) {
-            // TODO: Change to remote column name
             f.setRemoteColumnName(oneToMany.remoteColumnName());
             ParameterizedType t = (ParameterizedType) reflectField.getGenericType();
             f.setFieldType((Class) t.getActualTypeArguments()[0]);
@@ -198,6 +214,11 @@ public class _Entity {
         return f;
     }
 
+    /**
+     * Checks if a string is null or contains whitespaces
+     * @param str String
+     * @return boolean
+     */
     private boolean isNullOrWhiteSpace(String str) {
         return str == null || str.isBlank();
     }
@@ -227,16 +248,17 @@ public class _Entity {
 
     /** Gets the entity SQL.
      * @param prefix Prefix.
-     * @return SQL string. */
+     * @return SQL string
+     */
     public String getSQL(String prefix) {
         if (prefix == null) { prefix = ""; }
-        String rval = "SELECT ";
+        String result = "SELECT ";
         for (int i = 0; i < _internals.length; i++) {
-            if (i > 0) { rval += ", "; }
-            rval += prefix.trim() + _internals[i].getColumnName();
+            if (i > 0) { result += ", "; }
+            result += prefix.trim() + _internals[i].getColumnName();
         }
-        rval += " FROM " + _tableName;
+        result += " FROM " + _tableName;
 
-        return rval;
+        return result;
     }
 }

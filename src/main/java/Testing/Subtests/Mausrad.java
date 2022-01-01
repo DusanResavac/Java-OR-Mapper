@@ -1,14 +1,16 @@
 package Testing.Subtests;
 
-import OrmFramework.EntityAnnotation;
-import OrmFramework.FieldAnnotation;
-import OrmFramework.OneToOne;
-import OrmFramework.PrimaryKeyAnnotation;
+import OrmFramework.*;
 import lombok.Getter;
 import lombok.Setter;
 
 @EntityAnnotation(tableName = "MAUSRAEDER")
 public class Mausrad {
+
+    /**
+     * Instance number counter.
+     */
+    protected static int _N = 1;
 
     @Getter
     @Setter
@@ -25,4 +27,7 @@ public class Mausrad {
     @OneToOne(remoteColumnName = "mausrad", isInTable = false)
     private Maus maus;
 
+    @IgnoreAnnotation
+    @Getter
+    protected int _instanceNumber = _N++;
 }
