@@ -63,6 +63,9 @@ public class TrackingCache implements Cache {
 
         for (_Field i: Orm._getEntity(obj).get_externals()) {
             Object externalObject = i.getValue(obj);
+            if (externalObject == null) {
+                continue;
+            }
 
             // Watch out for 1:1 - one table doesn't have the other table's key -> the field is external, but not a list
             if (!(externalObject instanceof Collection<?>)) {
@@ -71,13 +74,12 @@ public class TrackingCache implements Cache {
             }
             Iterable fkObject = (Iterable) externalObject;
 
-            if (fkObject != null) {
-                result.append(i.getColumnName()).append("=");
-                // iterate through object list and append each primary key value to the result
-                for (Object k: fkObject) {
-                    result.append(Orm._getEntity(k).getPrimaryKey().getValue(k).toString()).append(",");
-                }
+            result.append(i.getColumnName()).append("=");
+            // iterate through object list and append each primary key value to the result
+            for (Object k: fkObject) {
+                result.append(Orm._getEntity(k).getPrimaryKey().getValue(k).toString()).append(",");
             }
+
         }
 
         return Hashing.sha256().hashString(result.toString(), StandardCharsets.UTF_8).toString();

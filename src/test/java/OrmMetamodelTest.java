@@ -22,7 +22,7 @@ public class OrmMetamodelTest {
     public static void beforeAll() throws SQLException, NoSuchMethodException {
         Orm.connect("jdbc:mariadb://localhost:3306/school?user=root&password=");
         // Very unfortunate, but class ordering seemed too much of a hassle and the get Test-class was always
-        // executed first, which is why the tests of the save class are executed manually (and therefore twice)
+        // executed first, which is why the tests of the save class are executed manually (and therefore multiple times)
         OrmSaveTest.beforeAll();
         var b = new OrmSaveTest();
         b.testSave();
@@ -162,7 +162,7 @@ public class OrmMetamodelTest {
         assertNotNull(s);
         // Courses should be filled
         assertEquals(1, s.getCourses().size());
-        // Course should have this student and s.0
+        // Course should have this student (s.2) and s.0
         assertEquals(2, s.getCourses().get(0).getStudents().size());
     }
 

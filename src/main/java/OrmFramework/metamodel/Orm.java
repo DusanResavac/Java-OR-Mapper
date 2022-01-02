@@ -1,16 +1,23 @@
 package OrmFramework.metamodel;
 
 import OrmFramework.Cache;
+import OrmFramework.LogFormatter;
 import OrmFramework.NMRelation;
 import OrmFramework.RelationType;
 import lombok.Getter;
 import lombok.Setter;
 
 import java.sql.*;
+
 import java.util.*;
+import java.util.logging.ConsoleHandler;
+import java.util.logging.Formatter;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 
 public class Orm {
 
+    private static Logger log = Logger.getLogger(Logger.GLOBAL_LOGGER_NAME);
     private static final Map<Class, _Entity> _entities = new HashMap<>();
     /** Database connection. */
     private static Connection _connection;
@@ -28,7 +35,7 @@ public class Orm {
             PreparedStatement prepStmt2 = _connection.prepareStatement("DELETE FROM " + resultSet.getString(1));
             prepStmt2.execute();
             prepStmt2.close();
-            System.out.println("DELETE FROM " + resultSet.getString(1) + System.lineSeparator());
+            log.info("DELETE FROM " + resultSet.getString(1) + System.lineSeparator());
         }
 
         prepStmt.close();
@@ -249,10 +256,26 @@ public class Orm {
     }
 
 
+    public static void setLevel (Level level) {
+        if (log.getHandlers().length == 1) {
+            log.getHandlers()[0].setLevel(level);
+            log.setLevel(level);
+        } else {
+            ConsoleHandler handler = new ConsoleHandler();
+            Formatter formatter = new LogFormatter();
+            handler.setFormatter(formatter);
+            handler.setLevel(level);
+            log.addHandler(handler);
+            log.setLevel(level);
+        }
+    }
+
     /** Connects to a database.
      * @param url Connection URL.
      * @throws SQLException Thrown when the connection could not be established. */
     public static void connect(String url) throws SQLException {
+        log.setUseParentHandlers(false);
+        setLevel(Level.INFO);
         DriverManager.registerDriver(new org.mariadb.jdbc.Driver());
         _connection = DriverManager.getConnection(url);
     }
@@ -269,7 +292,7 @@ public class Orm {
      * @throws SQLException thrown when an SQL error occurs
      */
     public static void save(Object obj, boolean changeReferencedObjects) throws NoSuchMethodException, SQLException {
-        System.out.println("--- saving - " + obj.getClass() + " - " + _getEntity(obj).getPrimaryKey().getValue(obj));
+        log.info("--- saving - " + obj.getClass() + " - " + _getEntity(obj).getPrimaryKey().getValue(obj));
         _save(obj, changeReferencedObjects, null);
 
         // Update references, after all objects are created / updated
@@ -328,15 +351,50 @@ public class Orm {
             if (temp instanceof Collection<?>) {
                 for (Object o : (Iterable) temp) {
                     if (o != null) {
-                        System.out.println("updating references - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj) + " " + f.getRelation() + " " + f.getFieldType() + " : " + _getEntity(o).getPrimaryKey().getValue(o));
+                        log.fine("updating references - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj) + " " + f.getRelation() + " " + f.getFieldType() + " : " + _getEntity(o).getPrimaryKey().getValue(o));
                     }
                 }
             } else {
                 Object pkOfReference = temp == null ? null : _getEntity(temp).getPrimaryKey().getValue(temp);
-                System.out.println("updating references - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj) + " " + f.getRelation() + " " + f.getFieldType() + " : " + pkOfReference);
+                log.fine("updating references - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj) + " " + f.getRelation() + " " + f.getFieldType() + " : " + pkOfReference);
             }
 
             f.updateReference(obj);
+        }
+
+        // remove foreign key objects from cache
+        for (_Field f: ent.get_internals()) {
+            if (f.isForeignKey() && _cache != null) {
+                // Since the references are updated in another method, the cache can't know if the references changed ->
+                // therefore if the save method is invoked, all objects whose references are updated need to be removed
+                Object foreignObject = f.getValue(obj);
+                if (foreignObject != null) {
+                    log.fine("removing from cache: " + _getEntity(foreignObject).getTableName() + " : " + _getEntity(foreignObject).getPrimaryKey().getValue(foreignObject));
+                    _cache.remove(foreignObject);
+
+                    // if the foreign object is null and the CACHE of the primary object still contains a value,
+                    // the foreign object in the cache of the object needs to be removed from the cache
+                    // e.g.: class has teacher t.0 and sets it to null (without saving)
+                    // -> teacher t.0 is being retrieved with Orm.get (and put into the cache)
+                    // -> class is saved
+                    // -> teacher t.0 will still be in cache
+                    // to prevent this, check cache and remove the old foreign object teacher t.0
+                } else if (_cache.contains(obj.getClass(), _getEntity(obj).getPrimaryKey().getValue(obj))) {
+                    Object oldObject = _cache.get(obj.getClass(), _getEntity(obj).getPrimaryKey().getValue(obj));
+                    Object oldForeignObject = f.getValue(oldObject);
+                    if (oldForeignObject != null) {
+                        log.fine("removing from cache: " + _getEntity(oldForeignObject).getTableName() + " : " + _getEntity(oldForeignObject).getPrimaryKey().getValue(oldForeignObject));
+                        _cache.remove(oldForeignObject);
+                    }
+                }
+            }
+        }
+
+        if(_cache != null) {
+            // Since the references are updated in another method, the cache can't know if the references changed ->
+            // therefore if the save method is invoked, all objects whose references are updated need to be removed
+            log.fine("removing from cache: " +  _getEntity(obj).getTableName() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj));
+            _cache.remove(obj);
         }
     }
 
@@ -427,11 +485,8 @@ public class Orm {
         preparedStatement.close();
 
 
-        System.out.println("saved - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj));
+        log.fine("saved - " + obj.getClass() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj));
 
-        if (_cache != null) {
-            _cache.put(obj);
-        }
     }
 
     /**
@@ -532,6 +587,7 @@ public class Orm {
             }
 
             if (_cache != null) {
+                log.fine("putting in cache " +  _getEntity(result).getTableName() + " : " + _getEntity(result).getPrimaryKey().getValue(result));
                 _cache.put(result);
             }
         } catch (Exception ex) { ex.printStackTrace(); }

@@ -16,6 +16,7 @@ import java.lang.reflect.ParameterizedType;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
+import java.util.logging.Level;
 
 public class Main {
 
@@ -37,11 +38,13 @@ public class Main {
         //Running the script
         sr.runScript(reader);*/
         Orm.connect("jdbc:mariadb://localhost:3306/school?user=root&password=");
+        Orm.setLevel(Level.INFO);
 
         Field field = Main.class.getDeclaredField("b");
         ParameterizedType t = (ParameterizedType) field.getGenericType();
         Class<?> c = (Class<?>) t.getActualTypeArguments()[0];
-        // Cache funktioniert mit dem rekursiven Speichern nicht, daher deaktiviert
+        // Viele edge cases wurden mit caching überlegt, jedoch kann es sein, dass es noch Probleme gibt, weswegen
+        // bei komischem Verhalten empfohlen wird, ihn ausgeschaltet zu lassen
         // Orm.set_cache(new TrackingCache());
 
         InsertOneToOneObject.show();

@@ -4,10 +4,11 @@ import OrmFramework.metamodel.Orm;
 import Testing.Gender;
 import Testing.Teacher;
 
+import java.sql.SQLException;
 import java.util.Calendar;
 
 public class InsertObject {
-    public static void show() {
+    public static void show() throws SQLException, NoSuchMethodException {
         System.out.println("(1) Insert object");
         System.out.println("-----------------");
 
@@ -28,16 +29,11 @@ public class InsertObject {
 
         t.setSalary(50000);
 
-        try
-        {
-            Orm.save(t, false);
-            System.out.println();
-        }
-        catch(Exception ex)
-        {
-            ex.printStackTrace();
-            System.out.println("Failed to save: " + ex.getMessage());
-        }
+
+        Orm.save(t, false);
+        System.out.println("Teacher " + t.getFirstName() + " " + t.getName() + " was saved!");
+        System.out.println();
+
 
         System.out.println("\n");
     }
