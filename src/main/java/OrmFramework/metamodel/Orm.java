@@ -259,15 +259,14 @@ public class Orm {
     public static void setLevel (Level level) {
         if (log.getHandlers().length == 1) {
             log.getHandlers()[0].setLevel(level);
-            log.setLevel(level);
         } else {
             ConsoleHandler handler = new ConsoleHandler();
             Formatter formatter = new LogFormatter();
             handler.setFormatter(formatter);
             handler.setLevel(level);
             log.addHandler(handler);
-            log.setLevel(level);
         }
+        log.setLevel(level);
     }
 
     /** Connects to a database.
@@ -363,6 +362,25 @@ public class Orm {
         }
 
         // remove foreign key objects from cache
+        removeForeignObjectsFromCache(obj, ent);
+
+        if(_cache != null) {
+            // Since the references are updated in another method, the cache can't know if the references changed ->
+            // therefore if the save method is invoked, all objects whose references are updated need to be removed
+            log.fine("removing from cache: " +  _getEntity(obj).getTableName() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj));
+            _cache.remove(obj);
+        }
+    }
+
+    /**
+     * Removes foreign key objects from cache. This is needed when an object is updated because its references might not
+     * be correct anymore. Therefore, to be safe, remove all associated foreign key objects from the cache, so that they are
+     * retrieved from the database the next time they are requested.
+     * @param obj
+     * @param ent
+     */
+    private static void removeForeignObjectsFromCache(Object obj, _Entity ent) throws NoSuchMethodException {
+        // remove foreign key objects from cache
         for (_Field f: ent.get_internals()) {
             if (f.isForeignKey() && _cache != null) {
                 // Since the references are updated in another method, the cache can't know if the references changed ->
@@ -388,13 +406,6 @@ public class Orm {
                     }
                 }
             }
-        }
-
-        if(_cache != null) {
-            // Since the references are updated in another method, the cache can't know if the references changed ->
-            // therefore if the save method is invoked, all objects whose references are updated need to be removed
-            log.fine("removing from cache: " +  _getEntity(obj).getTableName() + " : " + _getEntity(obj).getPrimaryKey().getValue(obj));
-            _cache.remove(obj);
         }
     }
 
@@ -503,7 +514,11 @@ public class Orm {
         cmd.execute();
         cmd.close();
 
-        if(_cache != null) { _cache.remove(obj); }
+        removeForeignObjectsFromCache(obj, ent);
+
+        if(_cache != null) {
+            _cache.remove(obj);
+        }
 
     }
 
